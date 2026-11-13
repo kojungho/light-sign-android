@@ -17,10 +17,11 @@ public final class MainActivity extends Activity {
     private static final String DEFAULT_TEXT = "라이트를 켜시오";
     private static final int DEFAULT_INK = 0xffffe36b, DEFAULT_BG = Color.BLACK;
     private SharedPreferences prefs;
+    private Updates updates;
     private SignView preview;
     private EditText editor;
-    private TextView percent;
-    private int ink, bg, scale;
+    private TextView percent, speedLabel;
+    private int ink, bg, scale, speed;
     private boolean editing, paper, marquee;
     private Spectrum spectrum;
     private Button inkTab, bgTab;
@@ -29,8 +30,12 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences("sign", MODE_PRIVATE);
+        updates=new Updates(this);
         showSign();
     }
+    @Override protected void onResume(){super.onResume();updates.resume();}
+    @Override protected void onPause(){updates.pause();super.onPause();}
+    @Override protected void onDestroy(){updates.close();super.onDestroy();}
 
     private int dp(float n) { return Math.round(getResources().getDisplayMetrics().density*n); }
     private void full(boolean on) {
@@ -69,7 +74,7 @@ public final class MainActivity extends Activity {
         editing=false;
         FrameLayout root=new FrameLayout(this);
         SignView sign=new SignView();
-        sign.update(prefs.getString("message",DEFAULT_TEXT),prefs.getInt("ink",DEFAULT_INK),prefs.getInt("bg",DEFAULT_BG),prefs.getInt("scale",100),prefs.getBoolean("marquee",false));
+        sign.update(prefs.getString("message",DEFAULT_TEXT),prefs.getInt("ink",DEFAULT_INK),prefs.getInt("bg",DEFAULT_BG),prefs.getInt("scale",100),prefs.getBoolean("marquee",false),savedSpeed());
         root.setBackgroundColor(sign.bg);
         root.addView(sign,new FrameLayout.LayoutParams(-1,-1));
         Button gear=button("⚙",0xff263040,Color.WHITE);gear.setContentDescription("안내판 설정");
@@ -77,9 +82,10 @@ public final class MainActivity extends Activity {
         FrameLayout.LayoutParams place=new FrameLayout.LayoutParams(dp(48),dp(48),Gravity.BOTTOM|Gravity.END);place.setMargins(dp(8),dp(8),dp(12),dp(10));root.addView(gear,place);
         safeRoot=root;setContentView(root);safeInsets(root);full(true);
     }
+    private int savedSpeed() { return Math.max(25,Math.min(250,prefs.getInt("scrollSpeed",100))); }
     private void showSettings() {
         editing=true;paper=false;
-        ink=prefs.getInt("ink",DEFAULT_INK);bg=prefs.getInt("bg",DEFAULT_BG);scale=prefs.getInt("scale",100);marquee=prefs.getBoolean("marquee",false);
+        ink=prefs.getInt("ink",DEFAULT_INK);bg=prefs.getInt("bg",DEFAULT_BG);scale=prefs.getInt("scale",100);marquee=prefs.getBoolean("marquee",false);speed=savedSpeed();
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xff121722);
         LinearLayout outer=new LinearLayout(this);outer.setOrientation(1);outer.setGravity(Gravity.CENTER_HORIZONTAL);
         scroll.addView(outer,new ScrollView.LayoutParams(-1,-2));
@@ -97,8 +103,21 @@ public final class MainActivity extends Activity {
         size.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar b){}public void onStopTrackingTouch(SeekBar b){}public void onProgressChanged(SeekBar b,int p,boolean user){scale=30+p;refresh();}});box.addView(size);
         Switch motion=new Switch(this);motion.setText("한 줄 흐르기");motion.setTextColor(Color.WHITE);
         motion.setMinHeight(dp(48));motion.setChecked(marquee);
-        motion.setOnCheckedChangeListener((v,enabled)->{marquee=enabled;refresh();});box.addView(motion);
+        box.addView(motion);
         label(box,"글자를 크게 한 줄로 표시하고, 너비를 넘을 때만 흐릅니다.");
+        speedLabel=label(box,"흐르기 속도 · "+speed+"%");
+        SeekBar speedSlider=new SeekBar(this);
+        speedSlider.setContentDescription("흐르기 속도");
+        speedSlider.setMax(45);speedSlider.setProgress((speed-25)/5);
+        speedSlider.setEnabled(marquee);box.addView(speedSlider);
+        speedSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            public void onStartTrackingTouch(SeekBar b){}
+            public void onStopTrackingTouch(SeekBar b){}
+            public void onProgressChanged(SeekBar b,int p,boolean user){
+                speed=25+5*p;speedLabel.setText("흐르기 속도 · "+speed+"%");preview.setSpeed(speed);
+            }
+        });
+        motion.setOnCheckedChangeListener((v,enabled)->{marquee=enabled;speedSlider.setEnabled(enabled);refresh();});
         LinearLayout tabs=row(box);
         inkTab=button("글자 색상",0xff343d4e,Color.WHITE);bgTab=button("배경 색상",0xff343d4e,Color.WHITE);
         addButton(tabs,inkTab);addButton(tabs,bgTab);
@@ -109,8 +128,10 @@ public final class MainActivity extends Activity {
         Button save=button("저장하고 표시",DEFAULT_INK,0xff151b29);save.setOnClickListener(v->{
             String text=editor.getText().toString().trim();
             if(text.isEmpty()){editor.setError("표시할 문구를 입력하세요.");return;}
-            prefs.edit().putString("message",text).putInt("scale",scale).putInt("ink",ink).putInt("bg",bg).putBoolean("marquee",marquee).apply();leave();
+            prefs.edit().putString("message",text).putInt("scale",scale).putInt("ink",ink).putInt("bg",bg).putBoolean("marquee",marquee).putInt("scrollSpeed",speed).apply();leave();
         });addButton(actions,cancel);addButton(actions,save);
+        Button update=button("지금 업데이트 확인",0xff343d4e,Color.WHITE);
+        update.setOnClickListener(v->updates.check(true));box.addView(update,new LinearLayout.LayoutParams(-1,dp(48)));
         box.setFocusableInTouchMode(true);box.requestFocus();
         safeRoot=scroll;setContentView(scroll);safeInsets(scroll);full(false);refresh();
     }
@@ -134,7 +155,7 @@ public final class MainActivity extends Activity {
         if(preview==null||editor==null||percent==null)return;
         percent.setText("글자 크기 · "+scale+"%");
         String message=editor.getText().toString();
-        preview.update(message.trim().isEmpty()?DEFAULT_TEXT:message,ink,bg,scale,marquee);
+        preview.update(message.trim().isEmpty()?DEFAULT_TEXT:message,ink,bg,scale,marquee,speed);
     }
     private void leave() {
         if(editor!=null)getSystemService(InputMethodManager.class).hideSoftInputFromWindow(editor.getWindowToken(),0);
@@ -149,10 +170,16 @@ public final class MainActivity extends Activity {
         private StaticLayout layout;
         private boolean singleLine, overflow;
         private long scrollStart;
-        private int lineWidth;
+        private int lineWidth, speed=100;
         SignView(){super(MainActivity.this);paint.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD));setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);}
-        void update(String text,int ink,int bg,int scale,boolean singleLine) {
-            this.text=text;this.bg=bg;this.scale=scale;this.singleLine=singleLine;paint.setColor(ink);setContentDescription(text);layout=null;invalidate();
+        void update(String text,int ink,int bg,int scale,boolean singleLine,int speed) {
+            this.text=text;this.bg=bg;this.scale=scale;this.singleLine=singleLine;this.speed=speed;paint.setColor(ink);setContentDescription(text);layout=null;invalidate();
+        }
+        void setSpeed(int next) {
+            if(speed==next)return;
+            long now=SystemClock.uptimeMillis(),elapsed=now-scrollStart-750;
+            if(layout!=null&&overflow&&elapsed>0)scrollStart=now-750-Math.round(elapsed*(double)speed/next);
+            speed=next;invalidate();
         }
         private StaticLayout at(int width,float pixels) {
             paint.setTextSize(pixels);
@@ -205,7 +232,7 @@ public final class MainActivity extends Activity {
             } else {
                 float cycle=lineWidth+dp(56);
                 float elapsed=Math.max(0,SystemClock.uptimeMillis()-scrollStart-750)/1000f;
-                float offset=(elapsed*dp(105))%cycle;
+                float offset=(elapsed*dp(105)*speed/100f)%cycle;
                 c.translate(pad-offset,y);layout.draw(c);
                 c.translate(cycle,0);layout.draw(c);
                 if(getWindowVisibility()==VISIBLE&&isShown())postInvalidateOnAnimation();
