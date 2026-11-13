@@ -14,6 +14,7 @@ import android.widget.*;
 import android.os.SystemClock;
 
 public final class MainActivity extends Activity {
+    private static final int MIN_SPEED=25, MAX_SPEED=500, SPEED_STEP=5;
     private static final int MAX_MARQUEE_SCALE=180;
     private static final String DEFAULT_TEXT = "라이트를 켜시오";
     private static final int DEFAULT_INK = 0xffffe36b, DEFAULT_BG = Color.BLACK;
@@ -83,7 +84,7 @@ public final class MainActivity extends Activity {
         FrameLayout.LayoutParams place=new FrameLayout.LayoutParams(dp(48),dp(48),Gravity.BOTTOM|Gravity.END);place.setMargins(dp(8),dp(8),dp(12),dp(10));root.addView(gear,place);
         safeRoot=root;setContentView(root);safeInsets(root);full(true);
     }
-    private int savedSpeed() { return Math.max(25,Math.min(250,prefs.getInt("scrollSpeed",100))); }
+    private int savedSpeed() { return Math.max(MIN_SPEED,Math.min(MAX_SPEED,prefs.getInt("scrollSpeed",100))); }
     private void showSettings() {
         editing=true;paper=false;
         ink=prefs.getInt("ink",DEFAULT_INK);bg=prefs.getInt("bg",DEFAULT_BG);scale=prefs.getInt("scale",100);marquee=prefs.getBoolean("marquee",false);speed=savedSpeed();
@@ -109,13 +110,13 @@ public final class MainActivity extends Activity {
         speedLabel=label(box,"흐르기 속도 · "+speed+"%");
         SeekBar speedSlider=new SeekBar(this);
         speedSlider.setContentDescription("흐르기 속도");
-        speedSlider.setMax(45);speedSlider.setProgress((speed-25)/5);
+        speedSlider.setMax((MAX_SPEED-MIN_SPEED)/SPEED_STEP);speedSlider.setProgress((speed-MIN_SPEED)/SPEED_STEP);
         speedSlider.setEnabled(marquee);box.addView(speedSlider);
         speedSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             public void onStartTrackingTouch(SeekBar b){}
             public void onStopTrackingTouch(SeekBar b){}
             public void onProgressChanged(SeekBar b,int p,boolean user){
-                speed=25+5*p;speedLabel.setText("흐르기 속도 · "+speed+"%");preview.setSpeed(speed);
+                speed=MIN_SPEED+SPEED_STEP*p;speedLabel.setText("흐르기 속도 · "+speed+"%");preview.setSpeed(speed);
             }
         });
         motion.setOnCheckedChangeListener((v,enabled)->{marquee=enabled;int selected=scale;size.setMax((enabled?MAX_MARQUEE_SCALE:100)-30);size.setProgress(Math.min(selected,enabled?MAX_MARQUEE_SCALE:100)-30);scale=selected;speedSlider.setEnabled(enabled);refresh();});
