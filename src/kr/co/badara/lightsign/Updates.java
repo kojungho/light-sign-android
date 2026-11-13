@@ -138,7 +138,7 @@ final class Updates {
         return hash.toString();
     }
     private static HttpURLConnection open(String address)throws IOException{
-        URL url=new URL(address);
+        URL url=new URL(address+"?check="+System.currentTimeMillis());
         for(int i=0;i<8;i++){
             String host=url.getHost();
             if(!"https".equals(url.getProtocol())||url.getUserInfo()!=null||!(host.equals("github.com")||host.endsWith(".githubusercontent.com")))throw new IOException("잘못된 주소");
@@ -149,7 +149,7 @@ final class Updates {
             try{status=c.getResponseCode();}catch(IOException e){c.disconnect();throw e;}
             if(status==200)return c;
             String next=c.getHeaderField("Location");c.disconnect();
-            if(status<300||status>=400||next==null)throw new IOException("HTTP "+status);
+            if(status<300||status>=400||next==null)throw new IOException("HTTP "+status+" · "+url.getHost()+url.getPath());
             url=new URL(url,next);
         }
         throw new IOException("리디렉션 제한");
