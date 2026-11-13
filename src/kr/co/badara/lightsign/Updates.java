@@ -23,7 +23,7 @@ final class Updates {
     private volatile boolean closed;
     private boolean resumed,busy,awaitingPermission,promptOpen;
     private long lastCheck=-60000;
-    private int offered;
+    private int attempted;
     private Spec ready;
     private AlertDialog progress;
 
@@ -53,19 +53,11 @@ final class Updates {
                 ui(()->{
                     busy=false;
                     if(spec.code<=installed){if(manual)notice("최신 버전입니다.");}
-                    else if(resumed&&(manual||offered!=spec.code))offer(spec);
+                    else if(resumed&&(manual||attempted!=spec.code)){attempted=spec.code;download(spec);}
                     else if(!resumed)lastCheck=-60000;
                 });
             }catch(Exception e){ui(()->{busy=false;if(manual)notice("업데이트를 확인하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해주세요.");});}
         });
-    }
-    private void offer(Spec spec){
-        offered=spec.code;promptOpen=true;
-        AlertDialog d=new AlertDialog.Builder(activity).setTitle("새 버전 "+spec.version)
-            .setMessage("라이트 안내판을 업데이트할 수 있습니다. 기존 설정은 유지됩니다.")
-            .setNegativeButton("나중에",null)
-            .setPositiveButton("다운로드 및 설치",(dialog,which)->download(spec)).create();
-        d.setOnDismissListener(dialog->promptOpen=false);d.show();
     }
     private void download(Spec spec){
         busy=true;

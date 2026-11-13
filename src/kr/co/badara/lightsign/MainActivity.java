@@ -14,6 +14,7 @@ import android.widget.*;
 import android.os.SystemClock;
 
 public final class MainActivity extends Activity {
+    private static final int MAX_MARQUEE_SCALE=180;
     private static final String DEFAULT_TEXT = "라이트를 켜시오";
     private static final int DEFAULT_INK = 0xffffe36b, DEFAULT_BG = Color.BLACK;
     private SharedPreferences prefs;
@@ -99,7 +100,7 @@ public final class MainActivity extends Activity {
         editor.setPadding(dp(12),dp(9),dp(12),dp(9));editor.setBackground(rounded(0xff242d3d,10));box.addView(editor,new LinearLayout.LayoutParams(-1,-2));
         editor.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){} public void onTextChanged(CharSequence s,int a,int b,int c){refresh();} public void afterTextChanged(Editable e){}});
         percent=label(box,"");
-        SeekBar size=new SeekBar(this);size.setMax(70);size.setProgress(scale-30);size.setContentDescription("글자 크기");
+        SeekBar size=new SeekBar(this);size.setMax((marquee?MAX_MARQUEE_SCALE:100)-30);size.setProgress(Math.min(scale,marquee?MAX_MARQUEE_SCALE:100)-30);size.setContentDescription("글자 크기");
         size.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar b){}public void onStopTrackingTouch(SeekBar b){}public void onProgressChanged(SeekBar b,int p,boolean user){scale=30+p;refresh();}});box.addView(size);
         Switch motion=new Switch(this);motion.setText("한 줄 흐르기");motion.setTextColor(Color.WHITE);
         motion.setMinHeight(dp(48));motion.setChecked(marquee);
@@ -117,7 +118,7 @@ public final class MainActivity extends Activity {
                 speed=25+5*p;speedLabel.setText("흐르기 속도 · "+speed+"%");preview.setSpeed(speed);
             }
         });
-        motion.setOnCheckedChangeListener((v,enabled)->{marquee=enabled;speedSlider.setEnabled(enabled);refresh();});
+        motion.setOnCheckedChangeListener((v,enabled)->{marquee=enabled;int selected=scale;size.setMax((enabled?MAX_MARQUEE_SCALE:100)-30);size.setProgress(Math.min(selected,enabled?MAX_MARQUEE_SCALE:100)-30);scale=selected;speedSlider.setEnabled(enabled);refresh();});
         LinearLayout tabs=row(box);
         inkTab=button("글자 색상",0xff343d4e,Color.WHITE);bgTab=button("배경 색상",0xff343d4e,Color.WHITE);
         addButton(tabs,inkTab);addButton(tabs,bgTab);
@@ -153,7 +154,7 @@ public final class MainActivity extends Activity {
     }
     private void refresh() {
         if(preview==null||editor==null||percent==null)return;
-        percent.setText("글자 크기 · "+scale+"%");
+        percent.setText("글자 크기 · "+Math.min(scale,marquee?MAX_MARQUEE_SCALE:100)+"%");
         String message=editor.getText().toString();
         preview.update(message.trim().isEmpty()?DEFAULT_TEXT:message,ink,bg,scale,marquee,speed);
     }
@@ -208,19 +209,26 @@ public final class MainActivity extends Activity {
                     for(int i=0;fits&&i<candidate.getLineCount();i++) fits=candidate.getLineWidth(i)<=width+.5f;
                     if(fits){best=mid;low=mid+1;}else high=mid-1;
                 }
-                layout=at(width,Math.max(1,best*scale/100f));
+                layout=at(width,Math.max(1,best*Math.min(scale,100)/100f));
             }
             c.save();c.translate(pad,(getHeight()-layout.getHeight())/2f);layout.draw(c);c.restore();
         }
     
+        private StaticLayout singleLineLayout(String line) {
+            lineWidth=Math.max(1,(int)Math.ceil(Layout.getDesiredWidth(line,paint))+2);
+            return StaticLayout.Builder.obtain(line,0,line.length(),paint,lineWidth)
+                .setIncludePad(true).setMaxLines(1).build();
+        }
         private void drawSingleLine(Canvas c,int pad,int width,int height) {
             if(layout==null) {
                 // Fit the type to the available height, then measure its natural width.
                 String line=text.replaceAll("[\\r\\n\\u2028\\u2029]+"," ");
                 paint.setTextSize(Math.max(1,height*.56f*scale/100f));
-                lineWidth=Math.max(1,(int)Math.ceil(Layout.getDesiredWidth(line,paint))+2);
-                layout=StaticLayout.Builder.obtain(line,0,line.length(),paint,lineWidth)
-                    .setIncludePad(true).setMaxLines(1).build();
+                layout=singleLineLayout(line);
+                if(layout.getHeight()>height){
+                    paint.setTextSize(Math.max(1,paint.getTextSize()*(height-1f)/layout.getHeight()));
+                    layout=singleLineLayout(line);
+                }
                 overflow=lineWidth-2>width;
                 scrollStart=SystemClock.uptimeMillis();
             }
