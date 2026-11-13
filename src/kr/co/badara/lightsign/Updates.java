@@ -19,10 +19,8 @@ final class Updates {
     private final Activity activity;
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final ExecutorService io=Executors.newSingleThreadExecutor();
-    private final Runnable automatic=()->check(false);
     private volatile boolean closed;
     private boolean resumed,busy,awaitingPermission,promptOpen;
-    private long lastCheck=-60000;
     private int attempted;
     private Spec ready;
     private AlertDialog progress;
@@ -35,17 +33,15 @@ final class Updates {
             if(ready!=null&&activity.getPackageManager().canRequestPackageInstalls())install();
             else {ready=null;notice("설치를 계속하려면 라이트 안내판의 ‘알 수 없는 앱 설치’를 허용해주세요. 다시 확인하면 받은 파일을 사용할 수 있습니다.");}
         }else if(ready!=null&&!promptOpen)install();
-        else handler.postDelayed(automatic,850);
+        else check(false);
     }
-    void pause(){resumed=false;handler.removeCallbacks(automatic);}
-    void close(){closed=true;handler.removeCallbacks(automatic);io.shutdownNow();if(progress!=null)progress.dismiss();}
+    void pause(){resumed=false;}
+    void close(){closed=true;io.shutdownNow();if(progress!=null)progress.dismiss();}
     void check(boolean manual){
         if(closed||!resumed)return;
         if(busy||promptOpen||awaitingPermission){if(manual&&!promptOpen)notice("업데이트를 처리 중입니다.");return;}
         if(ready!=null){install();return;}
-        long now=SystemClock.elapsedRealtime();
-        if(!manual&&now-lastCheck<60000)return;
-        lastCheck=now;busy=true;
+        busy=true;
         io.execute(()->{
             try{
                 Spec spec=readSpec();
@@ -53,8 +49,7 @@ final class Updates {
                 ui(()->{
                     busy=false;
                     if(spec.code<=installed){if(manual)notice("최신 버전입니다.");}
-                    else if(resumed&&(manual||attempted!=spec.code)){attempted=spec.code;download(spec);}
-                    else if(!resumed)lastCheck=-60000;
+                    else if(resumed&&(manual||attempted!=spec.code))download(spec);
                 });
             }catch(Exception e){ui(()->{busy=false;if(manual)notice("업데이트를 확인하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해주세요.");});}
         });
@@ -89,6 +84,7 @@ final class Updates {
     }
     private void install(){
         if(!resumed||ready==null||promptOpen)return;
+        attempted=ready.code;
         if(!activity.getPackageManager().canRequestPackageInstalls()){
             promptOpen=true;
             AlertDialog d=new AlertDialog.Builder(activity).setTitle("업데이트 설치 허용")
